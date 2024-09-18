@@ -61,6 +61,10 @@ jobs:
             $packageJson | Add-Member -NotePropertyName "engines" -NotePropertyValue @{}
         }
         
+        if ($null -eq $packageJson.engines) {
+            $packageJson.engines = @{}
+        }
+        
         if (-not $packageJson.engines.PSObject.Properties.Name -contains "vscode") {
             $packageJson.engines | Add-Member -NotePropertyName "vscode" -NotePropertyValue "^$typesVersion"
         } else {
