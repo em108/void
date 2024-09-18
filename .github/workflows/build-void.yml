@@ -51,40 +51,16 @@ jobs:
         restore-keys: |
           ${{ runner.os }}-node-modules-
 
-    - name: Check and update VSCode engine version
+    - name: Update VSCode engine version
       run: |
-        $ErrorActionPreference = "Continue"
-        try {
-          $packageJson = Get-Content -Path package.json -Raw | ConvertFrom-Json
-          $currentEngineVersion = $packageJson.engines.vscode
-          Write-Host "Current engine.vscode: $currentEngineVersion"
-          
-          $typesVersionOutput = yarn list --pattern @types/vscode --json
-          Write-Host "Types version output: $typesVersionOutput"
-          
-          $typesVersionJson = $typesVersionOutput | ConvertFrom-Json
-          $typesVersionName = $typesVersionJson.data.trees | Where-Object { $_.name -like '@types/vscode@*' } | Select-Object -ExpandProperty name -First 1
-          $typesVersion = $typesVersionName -replace '@types/vscode@', ''
-          Write-Host "Current @types/vscode: $typesVersion"
-          
-          if ([string]::IsNullOrEmpty($currentEngineVersion) -or [string]::IsNullOrEmpty($typesVersion)) {
-            Write-Host "One or both versions are empty. Skipping version comparison."
-          } else {
-            $engineVersion = [version]($currentEngineVersion -replace '[\^~]', '')
-            $typesVersionObj = [version]$typesVersion
-            
-            if ($typesVersionObj -gt $engineVersion) {
-              $packageJson.engines.vscode = "^$typesVersion"
-              $packageJson | ConvertTo-Json -Depth 100 | Set-Content -Path package.json
-              Write-Host "Updated engine.vscode to: ^$typesVersion"
-            } else {
-              Write-Host "No update needed. Types version is not greater than engine version."
-            }
-          }
-        } catch {
-          Write-Host "An error occurred: $_"
-          Write-Host "Stack Trace: $($_.ScriptStackTrace)"
-        }
+        $packageJson = Get-Content -Path package.json -Raw | ConvertFrom-Json
+        $typesVersion = yarn list --pattern @types/vscode --depth=0 | Select-String -Pattern "@types/vscode@(\d+\.\d+\.\d+)" | ForEach-Object { $_.Matches.Groups[1].Value }
+        Write-Host "Current @types/vscode version: $typesVersion"
+        Write-Host "Current engines.vscode version: $($packageJson.engines.vscode)"
+        $packageJson.engines.vscode = "^$typesVersion"
+        $packageJson | ConvertTo-Json -Depth 100 | Set-Content -Path package.json
+        Write-Host "Updated engines.vscode to: ^$typesVersion"
+        Get-Content -Path package.json
 
     - name: Build Void
       run: |
