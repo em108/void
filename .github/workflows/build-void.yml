@@ -24,74 +24,84 @@ jobs:
       with:
         node-version: '20'
 
-    - name: Get npm cache directory
-      id: npm-cache-dir
-      shell: pwsh
-      run: |
-        $npmCacheDir = npm config get cache
-        echo "NPM_CACHE_DIR=$npmCacheDir" >> $env:GITHUB_OUTPUT
-        echo "NPM cache directory: $npmCacheDir"
-
-    - name: Cache npm dependencies
-      uses: actions/cache@v3
-      with:
-        path: ${{ steps.npm-cache-dir.outputs.NPM_CACHE_DIR }}
-        key: ${{ runner.os }}-npm-${{ hashFiles('**/package-lock.json') }}
-        restore-keys: |
-          ${{ runner.os }}-npm-
-
-    - name: Install Yarn
-      run: npm install -g yarn
-
     - name: Get yarn cache directory path
-      id: yarn-cache-dir
-      shell: pwsh
-      run: |
-        $yarnCacheDir = $(yarn cache dir)
-        echo "YARN_CACHE_DIR=$yarnCacheDir" >> $env:GITHUB_OUTPUT
-        echo "Yarn cache directory: $yarnCacheDir"
+      id: yarn-cache-dir-path
+      run: echo "dir=$(yarn cache dir)" >> $GITHUB_OUTPUT
 
     - name: Cache yarn dependencies
       uses: actions/cache@v3
+      id: yarn-cache
       with:
-        path: ${{ steps.yarn-cache-dir.outputs.YARN_CACHE_DIR }}
+        path: ${{ steps.yarn-cache-dir-path.outputs.dir }}
         key: ${{ runner.os }}-yarn-${{ hashFiles('**/yarn.lock') }}
         restore-keys: |
           ${{ runner.os }}-yarn-
 
     - name: Cache node_modules
       uses: actions/cache@v3
-      id: cache-node-modules
+      id: node-modules-cache
       with:
         path: '**/node_modules'
-        key: ${{ runner.os }}-modules-${{ hashFiles('**/yarn.lock') }}
+        key: ${{ runner.os }}-node-modules-${{ hashFiles('**/yarn.lock') }}
 
     - name: Install dependencies
-      if: steps.cache-node-modules.outputs.cache-hit != 'true'
+      if: steps.node-modules-cache.outputs.cache-hit != 'true'
       run: |
         yarn --frozen-lockfile --verbose
       continue-on-error: true
 
+    - name: Check TypeScript version
+      run: |
+        yarn list --pattern typescript
+        yarn why typescript
+
     - name: Build Void
-      run: yarn gulp vscode-win32-x64
+      run: |
+        yarn gulp vscode-win32-x64
       continue-on-error: true
+
+    - name: Check build output
+      run: |
+        if (Test-Path .\VSCode-win32-x64) {
+          echo "Build output exists"
+        } else {
+          echo "Build output does not exist"
+          exit 1
+        }
 
     - name: Create Release ZIP
-      run: Compress-Archive -Path .\VSCode-win32-x64 -DestinationPath ..\VoidIDE-Windows.zip
-      continue-on-error: true
+      if: success()
+      run: |
+        Compress-Archive -Path .\VSCode-win32-x64 -DestinationPath .\VoidIDE-Windows.zip
+        if (Test-Path .\VoidIDE-Windows.zip) {
+          echo "ZIP file created successfully"
+        } else {
+          echo "Failed to create ZIP file"
+          exit 1
+        }
 
     - name: Upload artifact
+      if: success()
       uses: actions/upload-artifact@v3
       with:
         name: VoidIDE-Windows
-        path: ..\VoidIDE-Windows.zip
-      if: always()
+        path: .\VoidIDE-Windows.zip
 
     - name: Upload logs
+      if: always()
       uses: actions/upload-artifact@v3
       with:
         name: build-logs
         path: |
           **/*.log
           **/yarn-error.log
-      if: always()
+          **/npm-debug.log
+
+    - name: Cache build output
+      if: success()
+      uses: actions/cache@v3
+      with:
+        path: .\VSCode-win32-x64
+        key: ${{ runner.os }}-vscode-build-${{ github.sha }}
+        restore-keys: |
+          ${{ runner.os }}-vscode-build-
