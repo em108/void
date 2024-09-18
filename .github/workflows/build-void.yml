@@ -56,10 +56,19 @@ jobs:
         $packageJson = Get-Content -Path package.json -Raw | ConvertFrom-Json
         $typesVersion = yarn list --pattern @types/vscode --depth=0 | Select-String -Pattern "@types/vscode@(\d+\.\d+\.\d+)" | ForEach-Object { $_.Matches.Groups[1].Value }
         Write-Host "Current @types/vscode version: $typesVersion"
-        Write-Host "Current engines.vscode version: $($packageJson.engines.vscode)"
-        $packageJson.engines.vscode = "^$typesVersion"
-        $packageJson | ConvertTo-Json -Depth 100 | Set-Content -Path package.json
+        
+        if (-not $packageJson.PSObject.Properties.Name -contains "engines") {
+            $packageJson | Add-Member -NotePropertyName "engines" -NotePropertyValue @{}
+        }
+        
+        if (-not $packageJson.engines.PSObject.Properties.Name -contains "vscode") {
+            $packageJson.engines | Add-Member -NotePropertyName "vscode" -NotePropertyValue "^$typesVersion"
+        } else {
+            $packageJson.engines.vscode = "^$typesVersion"
+        }
+        
         Write-Host "Updated engines.vscode to: ^$typesVersion"
+        $packageJson | ConvertTo-Json -Depth 100 | Set-Content -Path package.json
         Get-Content -Path package.json
 
     - name: Build Void
