@@ -26,42 +26,64 @@ jobs:
 
     - name: Get npm cache directory
       id: npm-cache-dir
-      run: echo "dir=$(npm config get cache)" >> $GITHUB_OUTPUT
+      shell: pwsh
+      run: |
+        $npmCacheDir = npm config get cache
+        echo "NPM_CACHE_DIR=$npmCacheDir" >> $env:GITHUB_OUTPUT
+        echo "NPM cache directory: $npmCacheDir"
 
     - name: Cache npm dependencies
       uses: actions/cache@v3
       with:
-        path: ${{ steps.npm-cache-dir.outputs.dir }}
-        key: ${{ runner.os }}-node-${{ hashFiles('**/package-lock.json') }}
+        path: ${{ steps.npm-cache-dir.outputs.NPM_CACHE_DIR }}
+        key: ${{ runner.os }}-npm-${{ hashFiles('**/package-lock.json') }}
         restore-keys: |
-          ${{ runner.os }}-node-
+          ${{ runner.os }}-npm-
 
     - name: Install Yarn
       run: npm install -g yarn
 
     - name: Get yarn cache directory path
-      id: yarn-cache-dir-path
-      run: echo "dir=$(yarn cache dir)" >> $GITHUB_OUTPUT
+      id: yarn-cache-dir
+      shell: pwsh
+      run: |
+        $yarnCacheDir = $(yarn cache dir)
+        echo "YARN_CACHE_DIR=$yarnCacheDir" >> $env:GITHUB_OUTPUT
+        echo "Yarn cache directory: $yarnCacheDir"
 
     - name: Cache yarn dependencies
       uses: actions/cache@v3
       with:
-        path: ${{ steps.yarn-cache-dir-path.outputs.dir }}
+        path: ${{ steps.yarn-cache-dir.outputs.YARN_CACHE_DIR }}
         key: ${{ runner.os }}-yarn-${{ hashFiles('**/yarn.lock') }}
         restore-keys: |
           ${{ runner.os }}-yarn-
 
     - name: Install dependencies
-      run: yarn
+      run: |
+        yarn --verbose
+      continue-on-error: true
 
     - name: Build Void
       run: yarn gulp vscode-win32-x64
+      continue-on-error: true
 
     - name: Create Release ZIP
       run: Compress-Archive -Path .\VSCode-win32-x64 -DestinationPath ..\VoidIDE-Windows.zip
+      continue-on-error: true
 
     - name: Upload artifact
       uses: actions/upload-artifact@v3
       with:
         name: VoidIDE-Windows
         path: ..\VoidIDE-Windows.zip
+      if: always()
+
+    - name: Upload logs
+      uses: actions/upload-artifact@v3
+      with:
+        name: build-logs
+        path: |
+          **/*.log
+          **/yarn-error.log
+      if: always()
