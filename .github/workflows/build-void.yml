@@ -51,10 +51,19 @@ jobs:
         restore-keys: |
           ${{ runner.os }}-node-modules-
 
-    - name: Check TypeScript version
+    - name: Check and update VSCode engine version
       run: |
-        yarn list --pattern typescript
-        yarn why typescript
+        $packageJson = Get-Content -Path package.json | ConvertFrom-Json
+        $currentEngineVersion = $packageJson.engines.vscode
+        $typesVersion = (yarn list --pattern @types/vscode --json | ConvertFrom-Json).data.trees | Where-Object { $_.name -like '@types/vscode@*' } | Select-Object -ExpandProperty name -First 1
+        $typesVersion = $typesVersion -replace '@types/vscode@', ''
+        Write-Host "Current engine.vscode: $currentEngineVersion"
+        Write-Host "Current @types/vscode: $typesVersion"
+        if ([version]$typesVersion -gt [version]($currentEngineVersion -replace '\^', '')) {
+          $packageJson.engines.vscode = "^$typesVersion"
+          $packageJson | ConvertTo-Json -Depth 100 | Set-Content -Path package.json
+          Write-Host "Updated engine.vscode to: ^$typesVersion"
+        }
 
     - name: Build Void
       run: |
