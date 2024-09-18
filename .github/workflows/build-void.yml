@@ -28,7 +28,7 @@ jobs:
       id: yarn-cache-dir-path
       run: echo "dir=$(yarn cache dir)" >> $GITHUB_OUTPUT
 
-    - name: Cache yarn dependencies
+    - name: Cache yarn cache
       uses: actions/cache@v3
       id: yarn-cache
       with:
@@ -37,18 +37,19 @@ jobs:
         restore-keys: |
           ${{ runner.os }}-yarn-
 
-    - name: Cache node_modules
-      uses: actions/cache@v3
-      id: node-modules-cache
-      with:
-        path: '**/node_modules'
-        key: ${{ runner.os }}-node-modules-${{ hashFiles('**/yarn.lock') }}
-
     - name: Install dependencies
-      if: steps.node-modules-cache.outputs.cache-hit != 'true'
       run: |
         yarn --frozen-lockfile --verbose
       continue-on-error: true
+
+    - name: Cache node_modules
+      uses: actions/cache@v3
+      if: always()
+      with:
+        path: '**/node_modules'
+        key: ${{ runner.os }}-node-modules-${{ hashFiles('**/yarn.lock') }}-${{ github.sha }}
+        restore-keys: |
+          ${{ runner.os }}-node-modules-
 
     - name: Check TypeScript version
       run: |
@@ -96,12 +97,3 @@ jobs:
           **/*.log
           **/yarn-error.log
           **/npm-debug.log
-
-    - name: Cache build output
-      if: success()
-      uses: actions/cache@v3
-      with:
-        path: .\VSCode-win32-x64
-        key: ${{ runner.os }}-vscode-build-${{ github.sha }}
-        restore-keys: |
-          ${{ runner.os }}-vscode-build-
