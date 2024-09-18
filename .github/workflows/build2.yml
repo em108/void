@@ -1,0 +1,88 @@
+name: Build and Deploy Windows IDE 2
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+    env:
+      NODE_VERSION: '16'
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v3
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'yarn'
+
+      - name: Install Yarn
+        run: npm install -g yarn
+
+      - name: Install Dependencies
+        run: yarn install --frozen-lockfile
+
+      - name: Build the IDE
+        run: yarn gulp vscode-win32-x64
+
+      - name: Verify Build Output
+        run: |
+          if [ ! -d "path/to/your/build/output" ]; then
+            echo "Build output directory not found!"
+            exit 1
+          fi
+
+      - name: Create Release Tag
+        id: create_tag
+        if: startsWith(github.ref, 'refs/tags/')
+        run: echo "Tag exists: ${{ github.ref }}"
+        else:
+          run: |
+            TAG_NAME="v$(date +'%Y%m%d%H%M%S')"
+            echo "##[set-output name=tag;]$TAG_NAME"
+            git tag $TAG_NAME
+            git push origin $TAG_NAME
+        shell: bash
+
+      - name: Upload Build Artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: windows-ide-build
+          path: path/to/your/build/output
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+
+    steps:
+      - name: Download Build Artifact
+        uses: actions/download-artifact@v3
+        with:
+          name: windows-ide-build
+          path: ./build
+
+      - name: Create GitHub Release
+        id: create_release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ github.ref_name }}
+          release_name: "Windows IDE Build ${{ github.ref_name }}"
+          draft: false
+          prerelease: false
+
+      - name: Upload Release Asset
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: ./build/path/to/your/build/output
+          asset_name: windows-ide-build.zip
+          asset_content_type: application/zip
+          
