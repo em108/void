@@ -53,16 +53,37 @@ jobs:
 
     - name: Check and update VSCode engine version
       run: |
-        $packageJson = Get-Content -Path package.json | ConvertFrom-Json
-        $currentEngineVersion = $packageJson.engines.vscode
-        $typesVersion = (yarn list --pattern @types/vscode --json | ConvertFrom-Json).data.trees | Where-Object { $_.name -like '@types/vscode@*' } | Select-Object -ExpandProperty name -First 1
-        $typesVersion = $typesVersion -replace '@types/vscode@', ''
-        Write-Host "Current engine.vscode: $currentEngineVersion"
-        Write-Host "Current @types/vscode: $typesVersion"
-        if ([version]$typesVersion -gt [version]($currentEngineVersion -replace '\^', '')) {
-          $packageJson.engines.vscode = "^$typesVersion"
-          $packageJson | ConvertTo-Json -Depth 100 | Set-Content -Path package.json
-          Write-Host "Updated engine.vscode to: ^$typesVersion"
+        $ErrorActionPreference = "Continue"
+        try {
+          $packageJson = Get-Content -Path package.json -Raw | ConvertFrom-Json
+          $currentEngineVersion = $packageJson.engines.vscode
+          Write-Host "Current engine.vscode: $currentEngineVersion"
+          
+          $typesVersionOutput = yarn list --pattern @types/vscode --json
+          Write-Host "Types version output: $typesVersionOutput"
+          
+          $typesVersionJson = $typesVersionOutput | ConvertFrom-Json
+          $typesVersionName = $typesVersionJson.data.trees | Where-Object { $_.name -like '@types/vscode@*' } | Select-Object -ExpandProperty name -First 1
+          $typesVersion = $typesVersionName -replace '@types/vscode@', ''
+          Write-Host "Current @types/vscode: $typesVersion"
+          
+          if ([string]::IsNullOrEmpty($currentEngineVersion) -or [string]::IsNullOrEmpty($typesVersion)) {
+            Write-Host "One or both versions are empty. Skipping version comparison."
+          } else {
+            $engineVersion = [version]($currentEngineVersion -replace '[\^~]', '')
+            $typesVersionObj = [version]$typesVersion
+            
+            if ($typesVersionObj -gt $engineVersion) {
+              $packageJson.engines.vscode = "^$typesVersion"
+              $packageJson | ConvertTo-Json -Depth 100 | Set-Content -Path package.json
+              Write-Host "Updated engine.vscode to: ^$typesVersion"
+            } else {
+              Write-Host "No update needed. Types version is not greater than engine version."
+            }
+          }
+        } catch {
+          Write-Host "An error occurred: $_"
+          Write-Host "Stack Trace: $($_.ScriptStackTrace)"
         }
 
     - name: Build Void
