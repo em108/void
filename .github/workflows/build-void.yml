@@ -59,9 +59,17 @@ jobs:
         restore-keys: |
           ${{ runner.os }}-yarn-
 
+    - name: Cache node_modules
+      uses: actions/cache@v3
+      id: cache-node-modules
+      with:
+        path: '**/node_modules'
+        key: ${{ runner.os }}-modules-${{ hashFiles('**/yarn.lock') }}
+
     - name: Install dependencies
+      if: steps.cache-node-modules.outputs.cache-hit != 'true'
       run: |
-        yarn --verbose
+        yarn --frozen-lockfile --verbose
       continue-on-error: true
 
     - name: Build Void
