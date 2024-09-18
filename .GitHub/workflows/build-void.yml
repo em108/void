@@ -1,0 +1,67 @@
+name: Build Void Windows IDE
+
+on:
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: 'Branch to build'
+        required: true
+        default: 'main'
+
+jobs:
+  build:
+    runs-on: windows-latest
+    
+    steps:
+    - name: Clone repository
+      uses: actions/checkout@v3
+      with:
+        repository: voideditor/void
+        ref: ${{ github.event.inputs.branch }}
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v3
+      with:
+        node-version: '20'
+
+    - name: Get npm cache directory
+      id: npm-cache-dir
+      run: echo "dir=$(npm config get cache)" >> $GITHUB_OUTPUT
+
+    - name: Cache npm dependencies
+      uses: actions/cache@v3
+      with:
+        path: ${{ steps.npm-cache-dir.outputs.dir }}
+        key: ${{ runner.os }}-node-${{ hashFiles('**/package-lock.json') }}
+        restore-keys: |
+          ${{ runner.os }}-node-
+
+    - name: Install Yarn
+      run: npm install -g yarn
+
+    - name: Get yarn cache directory path
+      id: yarn-cache-dir-path
+      run: echo "dir=$(yarn cache dir)" >> $GITHUB_OUTPUT
+
+    - name: Cache yarn dependencies
+      uses: actions/cache@v3
+      with:
+        path: ${{ steps.yarn-cache-dir-path.outputs.dir }}
+        key: ${{ runner.os }}-yarn-${{ hashFiles('**/yarn.lock') }}
+        restore-keys: |
+          ${{ runner.os }}-yarn-
+
+    - name: Install dependencies
+      run: yarn
+
+    - name: Build Void
+      run: yarn gulp vscode-win32-x64
+
+    - name: Create Release ZIP
+      run: Compress-Archive -Path .\VSCode-win32-x64 -DestinationPath ..\VoidIDE-Windows.zip
+
+    - name: Upload artifact
+      uses: actions/upload-artifact@v3
+      with:
+        name: VoidIDE-Windows
+        path: ..\VoidIDE-Windows.zip
