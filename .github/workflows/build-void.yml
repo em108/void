@@ -11,7 +11,7 @@ on:
 jobs:
   build:
     runs-on: windows-latest
-    
+
     steps:
     - name: Clone repository
       uses: actions/checkout@v3
@@ -22,7 +22,10 @@ jobs:
     - name: Setup Node.js
       uses: actions/setup-node@v3
       with:
-        node-version: '20'
+        node-version-file: '.nvmrc'
+
+    - name: Install windows-build-tools
+      run: npm install --global windows-build-tools
 
     - name: Get yarn cache directory path
       id: yarn-cache-dir-path
@@ -39,12 +42,10 @@ jobs:
 
     - name: Install dependencies
       run: |
-        yarn --frozen-lockfile --verbose
-      continue-on-error: true
+        yarn --verbose
 
     - name: Cache node_modules
       uses: actions/cache@v3
-      if: always()
       with:
         path: '**/node_modules'
         key: ${{ runner.os }}-node-modules-${{ hashFiles('**/yarn.lock') }}-${{ github.sha }}
@@ -53,32 +54,32 @@ jobs:
 
     - name: Update VSCode engine version
       run: |
-        $packageJson = Get-Content -Path package.json -Raw | ConvertFrom-Json
-        $typesVersion = yarn list --pattern @types/vscode --depth=0 | Select-String -Pattern "@types/vscode@(\d+\.\d+\.\d+)" | ForEach-Object { $_.Matches.Groups[1].Value }
+        $packageJsonPath = Join-Path $PWD "package.json"
+        $packageJson = Get-Content -Path $packageJsonPath -Raw | ConvertFrom-Json
+        $typesVersion = yarn list --pattern "@types/vscode" --depth=0 | Select-String -Pattern "@types/vscode@(\d+\.\d+\.\d+)" | ForEach-Object { $_.Matches.Groups[1].Value }
         Write-Host "Current @types/vscode version: $typesVersion"
-        
+
         if (-not $packageJson.PSObject.Properties.Name -contains "engines") {
             $packageJson | Add-Member -NotePropertyName "engines" -NotePropertyValue @{}
         }
-        
-        if ($null -eq $packageJson.engines) {
+
+        if (-not $packageJson.engines) {
             $packageJson.engines = @{}
         }
-        
+
         if (-not $packageJson.engines.PSObject.Properties.Name -contains "vscode") {
             $packageJson.engines | Add-Member -NotePropertyName "vscode" -NotePropertyValue "^$typesVersion"
         } else {
             $packageJson.engines.vscode = "^$typesVersion"
         }
-        
+
         Write-Host "Updated engines.vscode to: ^$typesVersion"
-        $packageJson | ConvertTo-Json -Depth 100 | Set-Content -Path package.json
-        Get-Content -Path package.json
+        $packageJson | ConvertTo-Json -Depth 100 | Set-Content -Path $packageJsonPath
+        Get-Content -Path $packageJsonPath
 
     - name: Build Void
       run: |
         yarn gulp vscode-win32-x64
-      continue-on-error: true
 
     - name: Check build output
       run: |
@@ -90,7 +91,6 @@ jobs:
         }
 
     - name: Create Release ZIP
-      if: success()
       run: |
         Compress-Archive -Path .\VSCode-win32-x64 -DestinationPath .\VoidIDE-Windows.zip
         if (Test-Path .\VoidIDE-Windows.zip) {
@@ -101,7 +101,6 @@ jobs:
         }
 
     - name: Upload artifact
-      if: success()
       uses: actions/upload-artifact@v3
       with:
         name: VoidIDE-Windows
