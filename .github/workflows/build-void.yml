@@ -1,111 +1,44 @@
 name: Build Void Windows IDE
 
 on:
-  workflow_dispatch:
-    inputs:
-      branch:
-        description: 'Branch to build'
-        required: true
-        default: 'main'
+  push:
+    branches:
+      - main
+  pull_request:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: windows-latest
 
     steps:
-    - name: Clone repository
+    - name: Checkout Repository
       uses: actions/checkout@v3
-      with:
-        repository: voideditor/void
-        ref: ${{ github.event.inputs.branch }}
 
     - name: Setup Node.js
       uses: actions/setup-node@v3
       with:
         node-version-file: '.nvmrc'
 
-    - name: Install Yarn 1.x
-      run: npm install -g yarn@1.22.19
+    - name: Install Yarn
+      run: npm install -g yarn
 
-    - name: Install jq
-      run: sudo apt-get update && sudo apt-get install -y jq
-
-    - name: Get yarn cache directory path
-      id: yarn-cache-dir-path
-      run: echo "dir=$(yarn cache dir)" >> $GITHUB_OUTPUT
-
-    - name: Cache yarn cache
-      uses: actions/cache@v3
-      id: yarn-cache
-      with:
-        path: ${{ steps.yarn-cache-dir-path.outputs.dir }}
-        key: ${{ runner.os }}-yarn-${{ hashFiles('**/yarn.lock') }}
-        restore-keys: |
-          ${{ runner.os }}-yarn-
-
-    - name: Install dependencies
+    - name: Build Extension
+      working-directory: extensions/void
       run: |
-        yarn install --verbose
+        npm install
+        npm run build
 
-    - name: Cache node_modules
-      uses: actions/cache@v3
-      with:
-        path: '**/node_modules'
-        key: ${{ runner.os }}-node-modules-${{ hashFiles('**/yarn.lock') }}-${{ github.sha }}
-        restore-keys: |
-          ${{ runner.os }}-node-modules-
+    - name: Install Root Dependencies
+      run: yarn
 
-    - name: Update VSCode engine version
-      run: |
-        typesVersion=$(yarn list --pattern @types/vscode --depth=0 | grep -oP '@types/vscode@\K[0-9]+\.[0-9]+\.[0-9]+')
-        echo "Current @types/vscode version: $typesVersion"
+    - name: Compile the IDE
+      run: yarn compile
 
-        if [ -z "$typesVersion" ]; then
-          echo "Failed to get @types/vscode version"
-          exit 1
-        fi
+    - name: Bundle the IDE
+      run: yarn gulp vscode-win32-x64
 
-        jq --arg version "^$typesVersion" '.engines.vscode = $version' package.json > package.tmp.json
-        mv package.tmp.json package.json
-
-        echo "Updated engines.vscode to: ^$typesVersion"
-        cat package.json
-
-    - name: Build Void
-      run: |
-        yarn gulp vscode-win32-x64
-
-    - name: Check build output
-      run: |
-        if [ -d "./VSCode-win32-x64" ]; then
-          echo "Build output exists"
-        else
-          echo "Build output does not exist"
-          exit 1
-        fi
-
-    - name: Create Release ZIP
-      run: |
-        zip -r VoidIDE-Windows.zip VSCode-win32-x64
-        if [ -f "VoidIDE-Windows.zip" ]; then
-          echo "ZIP file created successfully"
-        else
-          echo "Failed to create ZIP file"
-          exit 1
-        fi
-
-    - name: Upload artifact
+    - name: Upload Build Artifact
       uses: actions/upload-artifact@v3
       with:
-        name: VoidIDE-Windows
-        path: VoidIDE-Windows.zip
-
-    - name: Upload logs
-      if: always()
-      uses: actions/upload-artifact@v3
-      with:
-        name: build-logs
-        path: |
-          **/*.log
-          **/yarn-error.log
-          **/npm-debug.log
+        name: void-windows-ide
+        path: .build/electron/code-*
